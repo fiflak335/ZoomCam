@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct CameraView: View {
     @StateObject private var cameraManager = CameraManager()
@@ -9,9 +10,6 @@ struct CameraView: View {
     @State private var upscaledImage: UIImage?
     @State private var upscaleInfo: UpscaleInfo?
     @State private var zoomText = "1.0x"
-    @State private var isTypingZoom = false
-    @State private var showSaveConfirmation = false
-    @State private var lastSavedError: String?
     @State private var pinchStartZoom: CGFloat = 1.0
 
     var body: some View {
@@ -301,7 +299,6 @@ struct CameraPreviewView: UIViewRepresentable {
 
 class CameraPreviewUIView: UIView {
     var session: AVCaptureSession?
-    private var previewLayer: AVCaptureVideoPreviewLayer?
 
     override class var layerClass: AnyClass {
         return AVCaptureVideoPreviewLayer.self

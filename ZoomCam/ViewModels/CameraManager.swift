@@ -23,10 +23,9 @@ class CameraManager: NSObject, ObservableObject {
 
     func setupSession() {
         session.beginConfiguration()
+        session.sessionPreset = .photo
 
-        guard let device = AVCaptureDevice.default(.builtInTripleLensCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("No camera available")
             return
         }
@@ -142,10 +141,6 @@ class CameraManager: NSObject, ObservableObject {
         let settings = AVCapturePhotoSettings()
         settings.flashMode = torchEnabled ? .on : .auto
         settings.photoQualityPrioritization = .quality
-
-        if let previewType = settings.availablePreviewPhotoPixelFormatTypes.first {
-            settings.previewPhotoFormat = [kCVPixelBufferPixelFormatTypeKey as String: previewType]
-        }
 
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
