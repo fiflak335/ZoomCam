@@ -38,13 +38,23 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO
 
+      - name: Find built app
+        run: |
+          echo "Looking for ZoomCam.app..."
+          find ./DerivedData -name "ZoomCam.app" -type d
+          echo "---"
+          ls -la ./DerivedData/Build/Products/Release-iphoneos/ 2>/dev/null || echo "Products/Release-iphoneos not found"
+
       - name: Package IPA
         run: |
+          APP_PATH=$(find ./DerivedData -name "ZoomCam.app" -type d | head -1)
+          echo "Found app at: $APP_PATH"
           mkdir -p Payload
-          cp -r DerivedData/Build/Release-iphoneos/ZoomCam.app Payload/
+          cp -r "$APP_PATH" Payload/
           zip -r ZoomCam.ipa Payload
           rm -rf Payload
           ls -la ZoomCam.ipa
+          echo "IPA size: $(du -h ZoomCam.ipa | cut -f1)"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
