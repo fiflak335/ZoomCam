@@ -24,11 +24,9 @@ xcuserdata/
 Packages/
 Package.pins
 Package.resolved
-*.xcodeproj
 
 # CocoaPods
 Pods/
-*.xcworkspace
 
 # Carthage
 Carthage/Build/

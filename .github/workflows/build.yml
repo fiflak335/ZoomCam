@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Build IPA
+  build-adhoc:
+    name: Build IPA (No Signing)
     runs-on: macos-14
     timeout-minutes: 30
 
@@ -25,74 +25,6 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Install provisioning profiles
-        env:
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-        run: |
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
-
-      - name: Install certificates
-        env:
-          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
-          echo -n "$CERTIFICATE_P12" | base64 --decode -o $CERTIFICATE_PATH
-
-          security create-keychain -p "" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "" $KEYCHAIN_PATH
-
-          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-      - name: Build App
-        run: |
-          xcodebuild clean build \
-            -project ZoomCam.xcodeproj \
-            -scheme ZoomCam \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -allowProvisioningUpdates \
-            CODE_SIGN_IDENTITY="${{ secrets.CODE_SIGN_IDENTITY }}" \
-            PROVISIONING_PROFILE="${{ secrets.PROVISIONING_PROFILE_UUID }}" \
-            DEVELOPMENT_TEAM="${{ secrets.DEVELOPMENT_TEAM }}"
-
-      - name: Create IPA
-        run: |
-          mkdir -p Payload
-          cp -r Build/Release-iphoneos/ZoomCam.app Payload/
-          zip -r ZoomCam.ipa Payload
-          rm -rf Payload
-
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ZoomCam-ipa
-          path: ZoomCam.ipa
-          retention-days: 30
-
-      - name: Cleanup keychain
-        if: always()
-        run: |
-          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db
-
-  build-adhoc:
-    name: Build Ad-Hoc IPA (No Signing)
-    runs-on: macos-14
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app
-
       - name: Build App (Ad-Hoc)
         run: |
           xcodebuild clean build \
@@ -100,20 +32,23 @@ jobs:
             -scheme ZoomCam \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            CODE_SIGN_IDENTITY="" \
+            -derivedDataPath ./DerivedData \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_BITCODE=NO
 
       - name: Package IPA
         run: |
           mkdir -p Payload
-          cp -r Build/Release-iphoneos/ZoomCam.app Payload/
-          zip -r ZoomCam-AdHoc.ipa Payload
+          cp -r DerivedData/Build/Release-iphoneos/ZoomCam.app Payload/
+          zip -r ZoomCam.ipa Payload
           rm -rf Payload
+          ls -la ZoomCam.ipa
 
-      - name: Upload Ad-Hoc IPA
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ZoomCam-AdHoc-ipa
-          path: ZoomCam-AdHoc.ipa
+          name: ZoomCam-ipa
+          path: ZoomCam.ipa
           retention-days: 30
