@@ -28,7 +28,7 @@
 		A20000000000000000000006 /* UpscaleResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpscaleResultView.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A20000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = "<group>"; };
 		A20000000000000000000010 /* ZoomCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZoomCam.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000011 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A20000000000000000000012 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
@@ -60,6 +60,7 @@
 				A40000000000000000000003 /* ViewModels */,
 				A40000000000000000000004 /* Views */,
 				A40000000000000000000005 /* Models */,
+				A20000000000000000000009 /* Assets.xcassets */,
 				A20000000000000000000008 /* Info.plist */,
 			);
 			path = ZoomCam;
@@ -89,7 +90,6 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000003 /* AIUpscaler.swift */,
-				A20000000000000000000009 /* Assets.xcassets */,
 				A20000000000000000000012 /* SettingsManager.swift */,
 			);
 			path = Models;
