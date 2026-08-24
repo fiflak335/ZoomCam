@@ -42,45 +42,56 @@ class AIUpscaler: ObservableObject {
     private func upscaleWithCIFilter(_ image: UIImage, scale: Int) async -> UIImage? {
         guard let ciImage = CIImage(image: image) else { return nil }
 
-        await MainActor.run { upscaleProgress = 0.2 }
+        await MainActor.run { upscaleProgress = 0.1 }
 
         // Step 1: Sharpen luminance
         let sharpenFilter = CIFilter(name: "CISharpenLuminance")
         sharpenFilter?.setValue(ciImage, forKey: kCIInputImageKey)
-        sharpenFilter?.setValue(0.7, forKey: kCIInputIntensityKey)
+        sharpenFilter?.setValue(0.8, forKey: kCIInputIntensityKey)
 
         guard let sharpenedImage = sharpenFilter?.outputImage else { return nil }
 
-        await MainActor.run { upscaleProgress = 0.4 }
+        await MainActor.run { upscaleProgress = 0.25 }
 
-        // Step 2: Unsharp mask
+        // Step 2: Unsharp mask for edge enhancement
         let unsharpFilter = CIFilter(name: "CIUnsharpMask")
         unsharpFilter?.setValue(sharpenedImage, forKey: kCIInputImageKey)
-        unsharpFilter?.setValue(2.5, forKey: kCIInputIntensityKey)
-        unsharpFilter?.setValue(1.0, forKey: kCIInputRadiusKey)
+        unsharpFilter?.setValue(3.0, forKey: kCIInputIntensityKey)
+        unsharpFilter?.setValue(1.5, forKey: kCIInputRadiusKey)
 
         guard let enhancedImage = unsharpFilter?.outputImage else { return nil }
 
-        await MainActor.run { upscaleProgress = 0.6 }
+        await MainActor.run { upscaleProgress = 0.4 }
 
-        // Step 3: Scale up
+        // Step 3: Scale up with high quality
         let scaleX = CGFloat(scale)
         let scaleY = CGFloat(scale)
         let scaledImage = enhancedImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
 
-        await MainActor.run { upscaleProgress = 0.8 }
+        await MainActor.run { upscaleProgress = 0.6 }
 
-        // Step 4: Adjust color and contrast
+        // Step 4: Color enhancement
         let colorFilter = CIFilter(name: "CIColorControls")
         colorFilter?.setValue(scaledImage, forKey: kCIInputImageKey)
-        colorFilter?.setValue(1.05, forKey: kCIInputContrastKey)
-        colorFilter?.setValue(0.02, forKey: kCIInputSaturationKey)
+        colorFilter?.setValue(1.08, forKey: kCIInputContrastKey)
+        colorFilter?.setValue(1.05, forKey: kCIInputSaturationKey)
 
-        guard let finalImage = colorFilter?.outputImage else {
+        guard let colorEnhanced = colorFilter?.outputImage else {
             return renderCIImage(scaledImage)
         }
 
-        await MainActor.run { upscaleProgress = 0.9 }
+        await MainActor.run { upscaleProgress = 0.8 }
+
+        // Step 5: Vibrance for richer colors
+        let vibranceFilter = CIFilter(name: "CIVibrance")
+        vibranceFilter?.setValue(colorEnhanced, forKey: kCIInputImageKey)
+        vibranceFilter?.setValue(0.2, forKey: "inputAmount")
+
+        guard let finalImage = vibranceFilter?.outputImage else {
+            return renderCIImage(colorEnhanced)
+        }
+
+        await MainActor.run { upscaleProgress = 0.95 }
 
         return renderCIImage(finalImage)
     }
@@ -91,12 +102,12 @@ class AIUpscaler: ObservableObject {
         return UIImage(cgImage: outputCGImage, scale: 1.0, orientation: .up)
     }
 
-    func upscaleImageWithDetails(_ image: UIImage) async -> (upscaled: UIImage, details: UpscaleInfo)? {
+    func upscaleImageWithDetails(_ image: UIImage, scale: Int = 4) async -> (upscaled: UIImage, details: UpscaleInfo)? {
         let startTime = Date()
         let originalSize = image.size
         let originalMegapixels = (originalSize.width * originalSize.height) / 1_000_000
 
-        guard let upscaled = await upscaleImage(image, targetScale: 4) else { return nil }
+        guard let upscaled = await upscaleImage(image, targetScale: scale) else { return nil }
 
         let elapsed = Date().timeIntervalSince(startTime)
         let upscaledSize = upscaled.size
@@ -108,7 +119,7 @@ class AIUpscaler: ObservableObject {
             originalMegapixels: originalMegapixels,
             upscaledMegapixels: upscaledMegapixels,
             processingTime: elapsed,
-            scaleFactor: 4
+            scaleFactor: scale
         )
 
         return (upscaled, info)

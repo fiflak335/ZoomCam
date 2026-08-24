@@ -3,13 +3,12 @@ import SwiftUI
 struct PreviewView: View {
     let image: UIImage
     @ObservedObject var upscaler: AIUpscaler
+    @ObservedObject var settings: SettingsManager
     let onRetake: () -> Void
     let onUpscaled: (UIImage, UpscaleInfo) -> Void
 
     @State private var isUpscaling = false
-    @State private var upscaleProgress: Float = 0
     @State private var showingSaveAlert = false
-    @State private var saveError: String?
 
     var body: some View {
         ZStack {
@@ -18,23 +17,28 @@ struct PreviewView: View {
             VStack(spacing: 0) {
                 // Top bar
                 HStack {
-                    Button("Retake") {
-                        onRetake()
+                    Button(action: onRetake) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                            Text("Retake")
+                        }
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .foregroundColor(.yellow)
                     }
-                    .foregroundColor(.yellow)
                     .padding()
 
                     Spacer()
 
                     Text("Preview")
-                        .font(.headline)
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
 
                     Spacer()
 
                     Spacer()
-                        .frame(width: 60)
+                        .frame(width: 80)
                 }
+                .background(.ultraThinMaterial)
 
                 Spacer()
 
@@ -50,45 +54,47 @@ struct PreviewView: View {
                 // Bottom controls
                 VStack(spacing: 16) {
                     if isUpscaling {
-                        VStack(spacing: 8) {
-                            ProgressView(value: upscaleProgress, total: 1.0)
-                                .progressViewStyle(LinearProgressViewStyle(tint: .yellow))
-                                .frame(width: 200)
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .yellow))
+                                .scaleEffect(1.2)
 
-                            Text("Upscaling with AI...")
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                            Text("Enhancing with AI...")
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundColor(.white.opacity(0.7))
                         }
-                        .padding()
+                        .padding(.vertical, 20)
                     } else {
                         // Action buttons
-                        HStack(spacing: 20) {
+                        HStack(spacing: 12) {
                             // Save original
                             Button(action: saveOriginal) {
-                                VStack {
+                                HStack(spacing: 8) {
                                     Image(systemName: "square.and.arrow.down")
-                                        .font(.title2)
-                                    Text("Save Original")
-                                        .font(.caption)
+                                    Text("Save")
                                 }
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.gray.opacity(0.3))
-                                .cornerRadius(12)
+                                .padding(.vertical, 16)
+                                .background(.ultraThinMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                                )
                             }
 
                             // AI Upscale
                             Button(action: performUpscale) {
-                                VStack {
+                                HStack(spacing: 8) {
                                     Image(systemName: "sparkles")
-                                        .font(.title2)
-                                    Text("AI Upscale 4x")
-                                        .font(.caption)
+                                    Text("AI Upscale \(settings.upscaleFactor.rawValue)")
                                 }
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
                                 .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
-                                .padding()
+                                .padding(.vertical, 16)
                                 .background(
                                     LinearGradient(
                                         colors: [.yellow, .orange],
@@ -96,27 +102,21 @@ struct PreviewView: View {
                                         endPoint: .trailing
                                     )
                                 )
-                                .cornerRadius(12)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .shadow(color: .yellow.opacity(0.3), radius: 10, y: 5)
                             }
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, 20)
                     }
                 }
                 .padding(.vertical, 20)
-                .background(Color.black.opacity(0.8))
+                .background(.ultraThinMaterial)
             }
         }
-        .alert("Image Saved", isPresented: $showingSaveAlert) {
+        .alert("Saved", isPresented: $showingSaveAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("The image has been saved to your photo library.")
-        }
-        .alert("Save Error", isPresented: .constant(saveError != nil)) {
-            Button("OK") { saveError = nil }
-        } message: {
-            if let error = saveError {
-                Text(error)
-            }
+            Text("Photo saved to your library")
         }
     }
 
@@ -124,7 +124,7 @@ struct PreviewView: View {
         isUpscaling = true
 
         Task {
-            if let result = await upscaler.upscaleImageWithDetails(image) {
+            if let result = await upscaler.upscaleImageWithDetails(image, scale: settings.upscaleFactor.value) {
                 await MainActor.run {
                     isUpscaling = false
                     onUpscaled(result.upscaled, result.details)
@@ -132,7 +132,6 @@ struct PreviewView: View {
             } else {
                 await MainActor.run {
                     isUpscaling = false
-                    saveError = "Failed to upscale image"
                 }
             }
         }

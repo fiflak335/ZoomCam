@@ -7,14 +7,14 @@ class CameraManager: NSObject, ObservableObject {
     @Published var currentZoom: CGFloat = 1.0
     @Published var maxZoom: CGFloat = 100.0
     @Published var capturedImage: UIImage?
-    @Published var isProcessing = false
     @Published var torchEnabled = false
+    @Published var currentPosition: AVCaptureDevice.Position = .back
 
     let session = AVCaptureSession()
     private var photoOutput = AVCapturePhotoOutput()
     private var videoDeviceInput: AVCaptureDeviceInput?
     private var videoDevice: AVCaptureDevice?
-    private var currentPosition: AVCaptureDevice.Position = .back
+    private var isConfiguring = false
 
     override init() {
         super.init()
@@ -22,37 +22,64 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     func setupSession() {
-        session.beginConfiguration()
-        session.sessionPreset = .photo
+        guard !isConfiguring else { return }
+        isConfiguring = true
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("No camera available")
-            return
-        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
 
-        videoDevice = device
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .photo
 
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            if session.canAddInput(input) {
-                session.addInput(input)
-                videoDeviceInput = input
+            // Remove existing inputs
+            for input in self.session.inputs {
+                self.session.removeInput(input)
             }
 
-            if session.canAddOutput(photoOutput) {
-                session.addOutput(photoOutput)
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: self.currentPosition) else {
+                print("No camera available")
+                self.session.commitConfiguration()
+                self.isConfiguring = false
+                return
             }
 
-            configureZoom()
+            self.videoDevice = device
 
-            session.commitConfiguration()
-            session.startRunning()
+            do {
+                let input = try AVCaptureDeviceInput(device: device)
+                if self.session.canAddInput(input) {
+                    self.session.addInput(input)
+                    self.videoDeviceInput = input
+                }
 
-            DispatchQueue.main.async {
-                self.isSessionRunning = true
+                // Remove existing outputs
+                for output in self.session.outputs {
+                    self.session.removeOutput(output)
+                }
+
+                if self.session.canAddOutput(self.photoOutput) {
+                    self.session.addOutput(self.photoOutput)
+                }
+
+                self.configureZoom()
+
+                self.session.commitConfiguration()
+
+                if !self.session.isRunning {
+                    self.session.startRunning()
+                }
+
+                DispatchQueue.main.async {
+                    self.isSessionRunning = true
+                    self.isConfiguring = false
+                }
+            } catch {
+                print("Failed to setup camera: \(error.localizedDescription)")
+                self.session.commitConfiguration()
+                DispatchQueue.main.async {
+                    self.isConfiguring = false
+                }
             }
-        } catch {
-            print("Failed to setup camera: \(error.localizedDescription)")
         }
     }
 
@@ -63,6 +90,7 @@ class CameraManager: NSObject, ObservableObject {
             try device.lockForConfiguration()
             let maxAvailableZoom = device.activeFormat.videoMaxZoomFactor
             maxZoom = min(maxAvailableZoom, 100.0)
+            device.videoZoomFactor = 1.0
             device.unlockForConfiguration()
         } catch {
             print("Failed to configure zoom: \(error)")
@@ -92,7 +120,7 @@ class CameraManager: NSObject, ObservableObject {
 
         let startZoom = device.videoZoomFactor
         let zoomDelta = clampedZoom - startZoom
-        let steps: Int = Int(duration * 60)
+        let steps: Int = max(1, Int(duration * 60))
         let stepTime = duration / Double(steps)
 
         DispatchQueue.global(qos: .userInteractive).async {
@@ -138,48 +166,84 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     func capturePhoto() {
+        guard session.isRunning else {
+            print("Session not running")
+            return
+        }
+
         let settings = AVCapturePhotoSettings()
-        settings.flashMode = torchEnabled ? .on : .auto
+        settings.flashMode = torchEnabled ? .on : .off
         settings.photoQualityPrioritization = .quality
+
+        // Unique ID for each photo settings
+        settings.uniqueID = Date().timeIntervalSince1970
 
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 
     func switchCamera() {
-        session.beginConfiguration()
+        guard !isConfiguring else { return }
+        isConfiguring = true
 
-        currentPosition = currentPosition == .back ? .front : .back
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
 
-        if let currentInput = videoDeviceInput {
-            session.removeInput(currentInput)
-        }
+            self.session.beginConfiguration()
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: currentPosition) else {
-            session.commitConfiguration()
-            return
-        }
+            self.currentPosition = self.currentPosition == .back ? .front : .back
 
-        videoDevice = device
-
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            if session.canAddInput(input) {
-                session.addInput(input)
-                videoDeviceInput = input
+            // Remove current input
+            if let currentInput = self.videoDeviceInput {
+                self.session.removeInput(currentInput)
             }
-        } catch {
-            print("Failed to switch camera: \(error)")
-        }
 
-        configureZoom()
-        session.commitConfiguration()
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: self.currentPosition) else {
+                self.session.commitConfiguration()
+                DispatchQueue.main.async {
+                    self.isConfiguring = false
+                }
+                return
+            }
+
+            self.videoDevice = device
+
+            do {
+                let input = try AVCaptureDeviceInput(device: device)
+                if self.session.canAddInput(input) {
+                    self.session.addInput(input)
+                    self.videoDeviceInput = input
+                }
+            } catch {
+                print("Failed to switch camera: \(error)")
+            }
+
+            self.configureZoom()
+            self.session.commitConfiguration()
+
+            DispatchQueue.main.async {
+                self.isConfiguring = false
+                self.torchEnabled = false
+            }
+        }
+    }
+
+    func zoomToFit() {
+        smoothZoom(to: 1.0)
     }
 }
 
 extension CameraManager: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let error = error {
+            print("Photo capture error: \(error.localizedDescription)")
+            return
+        }
+
         guard let data = photo.fileDataRepresentation(),
-              let image = UIImage(data: data) else { return }
+              let image = UIImage(data: data) else {
+            print("Failed to create image from photo data")
+            return
+        }
 
         DispatchQueue.main.async {
             self.capturedImage = image

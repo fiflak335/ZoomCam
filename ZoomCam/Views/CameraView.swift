@@ -4,37 +4,83 @@ import AVFoundation
 struct CameraView: View {
     @StateObject private var cameraManager = CameraManager()
     @StateObject private var upscaler = AIUpscaler()
-    @State private var zoomScale: CGFloat = 1.0
+    @StateObject private var settings = SettingsManager.shared
     @State private var showPreview = false
     @State private var showUpscaleResult = false
     @State private var upscaledImage: UIImage?
     @State private var upscaleInfo: UpscaleInfo?
-    @State private var zoomText = "1.0x"
+    @State private var isCapturing = false
+    @State private var flashOpacity: Double = 0
+    @State private var showSettings = false
+    @State private var zoomScale: CGFloat = 1.0
     @State private var pinchStartZoom: CGFloat = 1.0
+    @State private var zoomText: String = "1x"
+
+    let zoomLevels: [CGFloat] = [0.5, 1, 2, 5, 10, 25, 50, 100]
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Top bar
-                topBar
-
                 // Camera preview
-                cameraPreview
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 8)
+                GeometryReader { geometry in
+                    ZStack {
+                        CameraPreviewView(session: cameraManager.session)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
 
-                // Zoom slider area
-                zoomControls
+                        // Flash overlay
+                        Color.white
+                            .opacity(flashOpacity)
+                            .ignoresSafeArea()
+
+                        // Grid overlay
+                        if settings.showGrid {
+                            GridView()
+                        }
+
+                        // Zoom level indicator
+                        if cameraManager.currentZoom > 1 {
+                            VStack {
+                                Spacer()
+                                    .frame(height: 20)
+                                Text(zoomText)
+                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+                .gesture(
+                    MagnificationGesture(minimumScaleDelta: 0)
+                        .onChanged { value in
+                            let newZoom = pinchStartZoom * value
+                            cameraManager.setZoom(newZoom)
+                            updateZoomText()
+                        }
+                        .onEnded { _ in
+                            pinchStartZoom = cameraManager.currentZoom
+                        }
+                )
+                .onTapGesture(count: 2) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        if cameraManager.currentZoom > 1.0 {
+                            cameraManager.smoothZoom(to: 1.0)
+                        } else {
+                            cameraManager.smoothZoom(to: 2.0)
+                        }
+                        updateZoomText()
+                    }
+                }
 
                 // Bottom controls
-                bottomBar
-            }
-
-            // Zoom indicator overlay
-            if cameraManager.currentZoom > 1.0 {
-                zoomIndicator
+                bottomControls
             }
         }
         .sheet(isPresented: $showPreview) {
@@ -42,6 +88,7 @@ struct CameraView: View {
                 PreviewView(
                     image: image,
                     upscaler: upscaler,
+                    settings: settings,
                     onRetake: {
                         showPreview = false
                         cameraManager.capturedImage = nil
@@ -68,220 +115,215 @@ struct CameraView: View {
                 )
             }
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(settings: settings)
+        }
         .onAppear {
-            zoomText = String(format: "%.1fx", cameraManager.currentZoom)
+            updateZoomText()
         }
     }
 
-    private var topBar: some View {
-        HStack {
-            Button(action: { cameraManager.toggleTorch() }) {
-                Image(systemName: cameraManager.torchEnabled ? "bolt.fill" : "bolt.slash")
-                    .font(.title2)
-                    .foregroundColor(cameraManager.torchEnabled ? .yellow : .white)
-            }
-            .padding()
-
-            Spacer()
-
-            Text("ZoomCam")
-                .font(.headline)
-                .foregroundColor(.white)
-
-            Spacer()
-
-            Button(action: { cameraManager.switchCamera() }) {
-                Image(systemName: "camera.rotate")
-                    .font(.title2)
-                    .foregroundColor(.white)
-            }
-            .padding()
-        }
-        .background(Color.black.opacity(0.6))
-    }
-
-    private var cameraPreview: some View {
-        CameraPreviewView(session: cameraManager.session)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .aspectRatio(4/3, contentMode: .fit)
-            .gesture(
-                MagnificationGesture(minimumScaleDelta: 0)
-                    .onChanged { value in
-                        let newZoom = pinchStartZoom * value
-                        cameraManager.setZoom(newZoom)
-                        zoomText = String(format: "%.1fx", cameraManager.currentZoom)
-                    }
-                    .onEnded { value in
-                        pinchStartZoom = cameraManager.currentZoom
-                    }
-            )
-            .onTapGesture(count: 2) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    if cameraManager.currentZoom > 1.0 {
-                        cameraManager.smoothZoom(to: 1.0)
-                        zoomText = "1.0x"
-                    } else {
-                        cameraManager.smoothZoom(to: 2.0)
-                        zoomText = "2.0x"
-                    }
-                }
-            }
-    }
-
-    private var zoomControls: some View {
-        VStack(spacing: 8) {
-            // Quick zoom buttons
-            HStack(spacing: 12) {
-                ForEach([1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0], id: \.self) { zoom in
-                    ZoomButton(zoom: zoom, currentZoom: cameraManager.currentZoom) {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            cameraManager.smoothZoom(to: zoom)
-                            zoomText = String(format: "%.0fx", zoom)
+    private var bottomControls: some View {
+        VStack(spacing: 24) {
+            // Zoom lens selector
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(zoomLevels, id: \.self) { zoom in
+                        ZoomLensButton(
+                            zoom: zoom,
+                            currentZoom: cameraManager.currentZoom,
+                            isSelected: abs(cameraManager.currentZoom - zoom) < 0.3
+                        ) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                cameraManager.smoothZoom(to: zoom)
+                                updateZoomText()
+                            }
                         }
                     }
                 }
-            }
-            .padding(.horizontal)
-
-            // Slider
-            HStack {
-                Text("1x")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-
-                Slider(
-                    value: Binding(
-                        get: { cameraManager.currentZoom },
-                        set: { newValue in
-                            cameraManager.setZoom(newValue)
-                            zoomText = String(format: "%.1fx", newValue)
-                        }
-                    ),
-                    in: 1...cameraManager.maxZoom,
-                    step: 0.1
-                )
-                .accentColor(.yellow)
-
-                Text("\(Int(cameraManager.maxZoom))x")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-            }
-            .padding(.horizontal, 20)
-
-            // Text input for precise zoom
-            HStack {
-                Text("Zoom:")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-
-                TextField("1.0", text: $zoomText)
-                    .keyboardType(.decimalPad)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(width: 80)
-                    .multilineTextAlignment(.center)
-                    .onSubmit {
-                        if let zoomValue = Float(zoomText.replacingOccurrences(of: "x", with: "")) {
-                            cameraManager.smoothZoom(to: CGFloat(zoomValue))
-                        }
-                    }
-
-                Text("x")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-            }
-            .padding(.horizontal, 40)
-        }
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.6))
-    }
-
-    private var bottomBar: some View {
-        HStack(spacing: 40) {
-            // Gallery preview
-            if let image = cameraManager.capturedImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 50, height: 50)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white, lineWidth: 2)
-                    )
-            } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 50, height: 50)
-            }
-
-            // Capture button
-            Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-
-                cameraManager.capturePhoto()
-                showPreview = true
-            }) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.white, lineWidth: 4)
-                        .frame(width: 70, height: 70)
-
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 60, height: 60)
-                }
-            }
-
-            // Spacer for symmetry
-            Spacer()
-                .frame(width: 50)
-        }
-        .padding(.vertical, 20)
-        .background(Color.black.opacity(0.6))
-    }
-
-    private var zoomIndicator: some View {
-        VStack {
-            Spacer()
-                .frame(height: 120)
-
-            Text(zoomText)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(Color.black.opacity(0.7))
-                )
-                .transition(.opacity)
+            }
+
+            // Main controls
+            HStack(spacing: 0) {
+                // Thumbnail / Gallery
+                if let image = cameraManager.capturedImage {
+                    Button(action: { showPreview = true }) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.white.opacity(0.3), lineWidth: 1)
+                            )
+                    }
+                } else {
+                    Button(action: { showPreview = true }) {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 56, height: 56)
+                            .overlay(
+                                Image(systemName: "photo.on.rectangle")
+                                    .font(.title3)
+                                    .foregroundColor(.white.opacity(0.5))
+                            )
+                    }
+                }
+
+                Spacer()
+
+                // Capture button
+                Button(action: capturePhoto) {
+                    ZStack {
+                        // Outer ring
+                        Circle()
+                            .stroke(.white, lineWidth: 4)
+                            .frame(width: 76, height: 76)
+
+                        // Inner circle
+                        Circle()
+                            .fill(isCapturing ? .gray : .white)
+                            .frame(width: 64, height: 64)
+                            .scaleEffect(isCapturing ? 0.9 : 1.0)
+                    }
+                }
+                .disabled(isCapturing)
+
+                Spacer()
+
+                // Settings button
+                Button(action: { showSettings = true }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title3)
+                        .foregroundColor(.white)
+                        .frame(width: 56, height: 56)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .padding(.horizontal, 24)
+
+            // Mode selector
+            HStack(spacing: 24) {
+                // Torch
+                Button(action: {
+                    withAnimation { cameraManager.toggleTorch() }
+                }) {
+                    Image(systemName: cameraManager.torchEnabled ? "bolt.fill" : "bolt.slash.fill")
+                        .font(.body)
+                        .foregroundColor(cameraManager.torchEnabled ? .yellow : .white)
+                        .frame(width: 44, height: 44)
+                        .background(cameraManager.torchEnabled ? .yellow.opacity(0.2) : .ultraThinMaterial)
+                        .clipShape(Circle())
+                }
+
+                Spacer()
+
+                // Camera flip
+                Button(action: {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        cameraManager.switchCamera()
+                    }
+                }) {
+                    Image(systemName: "camera.rotate.fill")
+                        .font(.body)
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.horizontal, 32)
+        }
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial)
+    }
+
+    private func capturePhoto() {
+        guard !isCapturing else { return }
+
+        isCapturing = true
+
+        if settings.hapticFeedback {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+        }
+
+        // Flash animation
+        withAnimation(.easeOut(duration: 0.1)) {
+            flashOpacity = 0.5
+        }
+        withAnimation(.easeIn(duration: 0.2).delay(0.1)) {
+            flashOpacity = 0
+        }
+
+        cameraManager.capturePhoto()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            isCapturing = false
+            if cameraManager.capturedImage != nil {
+                showPreview = true
+            }
+        }
+    }
+
+    private func updateZoomText() {
+        let zoom = cameraManager.currentZoom
+        if zoom < 1 {
+            zoomText = String(format: "%.1fx", zoom)
+        } else if zoom == floor(zoom) {
+            zoomText = "\(Int(zoom))x"
+        } else {
+            zoomText = String(format: "%.1fx", zoom)
         }
     }
 }
 
-struct ZoomButton: View {
+struct ZoomLensButton: View {
     let zoom: CGFloat
     let currentZoom: CGFloat
+    let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text("\(Int(zoom))x")
-                .font(.caption)
-                .fontWeight(isActive ? .bold : .regular)
-                .foregroundColor(isActive ? .black : .white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
+            Text(zoom < 1 ? String(format: "%.1g", zoom) : "\(Int(zoom))")
+                .font(.system(size: 14, weight: isSelected ? .bold : .medium, design: .rounded))
+                .foregroundColor(isSelected ? .black : .white)
+                .frame(width: 44, height: 32)
+                .background(isSelected ? .white : .clear)
+                .clipShape(Capsule())
+                .overlay(
                     Capsule()
-                        .fill(isActive ? Color.yellow : Color.gray.opacity(0.5))
+                        .stroke(.white.opacity(isSelected ? 0 : 0.3), lineWidth: 1)
                 )
         }
     }
+}
 
-    private var isActive: Bool {
-        abs(currentZoom - zoom) < 0.5
+struct GridView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+
+            Path { path in
+                // Vertical lines
+                path.move(to: CGPoint(x: width / 3, y: 0))
+                path.addLine(to: CGPoint(x: width / 3, y: height))
+                path.move(to: CGPoint(x: (width / 3) * 2, y: 0))
+                path.addLine(to: CGPoint(x: (width / 3) * 2, y: height))
+
+                // Horizontal lines
+                path.move(to: CGPoint(x: 0, y: height / 3))
+                path.addLine(to: CGPoint(x: width, y: height / 3))
+                path.move(to: CGPoint(x: 0, y: (height / 3) * 2))
+                path.addLine(to: CGPoint(x: width, y: (height / 3) * 2))
+            }
+            .stroke(.white.opacity(0.3), lineWidth: 0.5)
+        }
     }
 }
 

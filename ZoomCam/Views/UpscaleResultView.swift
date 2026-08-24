@@ -16,43 +16,48 @@ struct UpscaleResultView: View {
             VStack(spacing: 0) {
                 // Top bar
                 HStack {
-                    Button("Done") {
-                        onDismiss()
+                    Button(action: onDismiss) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                            Text("Done")
+                        }
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .foregroundColor(.yellow)
                     }
-                    .foregroundColor(.yellow)
                     .padding()
 
                     Spacer()
 
-                    Text("AI Upscaled")
-                        .font(.headline)
+                    Text("AI Enhanced")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
 
                     Spacer()
 
                     Button(action: saveImage) {
                         Image(systemName: "square.and.arrow.down")
-                            .font(.title2)
+                            .font(.title3)
                             .foregroundColor(.yellow)
                     }
                     .padding()
                 }
+                .background(.ultraThinMaterial)
 
                 // Info banner
                 if let info = info {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "sparkles")
                             .foregroundColor(.yellow)
 
                         Text(info.description)
-                            .font(.caption)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundColor(.white)
 
                         Spacer()
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(Color.yellow.opacity(0.2))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.yellow.opacity(0.15))
                 }
 
                 // Image display
@@ -69,66 +74,72 @@ struct UpscaleResultView: View {
                 // Bottom controls
                 VStack(spacing: 12) {
                     // View mode toggle
-                    HStack(spacing: 20) {
-                        Button(action: { comparisonMode = false }) {
-                            VStack {
+                    HStack(spacing: 16) {
+                        Button(action: { withAnimation { comparisonMode = false } }) {
+                            VStack(spacing: 4) {
                                 Image(systemName: "photo")
                                     .font(.title3)
                                 Text("Full")
                                     .font(.caption2)
                             }
-                            .foregroundColor(!comparisonMode ? .yellow : .gray)
+                            .foregroundColor(!comparisonMode ? .yellow : .white.opacity(0.5))
                         }
 
-                        Button(action: { comparisonMode = true }) {
-                            VStack {
+                        Button(action: { withAnimation { comparisonMode = true } }) {
+                            VStack(spacing: 4) {
                                 Image(systemName: "square.split.2x2")
                                     .font(.title3)
                                 Text("Compare")
                                     .font(.caption2)
                             }
-                            .foregroundColor(comparisonMode ? .yellow : .gray)
+                            .foregroundColor(comparisonMode ? .yellow : .white.opacity(0.5))
                         }
 
                         Spacer()
 
                         // Share button
                         Button(action: shareImage) {
-                            VStack {
+                            VStack(spacing: 4) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.title3)
                                 Text("Share")
                                     .font(.caption2)
                             }
-                            .foregroundColor(.white)
+                            .foregroundColor(.white.opacity(0.8))
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 20)
 
-                    // Save buttons
-                    HStack(spacing: 12) {
-                        Button(action: saveImage) {
-                            HStack {
-                                Image(systemName: "square.and.arrow.down")
-                                Text("Save to Photos")
-                            }
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.yellow)
-                            .cornerRadius(12)
+                    // Save button
+                    Button(action: saveImage) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.down.fill")
+                            Text("Save to Photos")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
                         }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            LinearGradient(
+                                colors: [.yellow, .orange],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .shadow(color: .yellow.opacity(0.3), radius: 10, y: 5)
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 20)
                 }
-                .padding(.vertical, 12)
-                .background(Color.black.opacity(0.8))
+                .padding(.vertical, 16)
+                .background(.ultraThinMaterial)
             }
         }
-        .alert("Image Saved", isPresented: $showingSaveAlert) {
+        .alert("Saved", isPresented: $showingSaveAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("The upscaled image has been saved to your photo library.")
+            Text("Enhanced photo saved to your library")
         }
     }
 
