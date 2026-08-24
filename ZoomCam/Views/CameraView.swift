@@ -215,7 +215,15 @@ struct CameraView: View {
                         .font(.body)
                         .foregroundColor(cameraManager.torchEnabled ? .yellow : .white)
                         .frame(width: 44, height: 44)
-                        .background(cameraManager.torchEnabled ? .yellow.opacity(0.2) : .ultraThinMaterial)
+                        .background(
+                            Group {
+                                if cameraManager.torchEnabled {
+                                    Color.yellow.opacity(0.2)
+                                } else {
+                                    Color.gray.opacity(0.3)
+                                }
+                            }
+                        )
                         .clipShape(Circle())
                 }
 

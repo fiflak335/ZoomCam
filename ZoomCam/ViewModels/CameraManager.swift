@@ -175,9 +175,6 @@ class CameraManager: NSObject, ObservableObject {
         settings.flashMode = torchEnabled ? .on : .off
         settings.photoQualityPrioritization = .quality
 
-        // Unique ID for each photo settings
-        settings.uniqueID = Date().timeIntervalSince1970
-
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 
